@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brick Breaker</title>
+<style>
+  :root {
+    --bg: #0f1020;
+    --panel: #181a33;
+    --text: #e8e9f3;
+    --muted: #9a9cc0;
+    --accent: #ffcc4d;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    gap: 12px;
+  }
+  h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.08em; }
+  #wrap { width: 100%; max-width: 800px; }
+  canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: var(--panel);
+    border-radius: 10px;
+    touch-action: none;
+    cursor: none;
+  }
+  .help { color: var(--muted); font-size: 0.9rem; text-align: center; }
+  kbd {
+    background: #2a2d55;
+    border-radius: 4px;
+    padding: 1px 6px;
+    font-family: inherit;
+  }
+</style>
+</head>
+<body>
+  <h1>BRICK BREAKER</h1>
+  <div id="wrap"><canvas id="game" width="800" height="600"></canvas></div>
+  <p class="help">
+    Move: <kbd>←</kbd> <kbd>→</kbd> / <kbd>A</kbd> <kbd>D</kbd> / mouse / touch ·
+    Launch: <kbd>Space</kbd> / click ·
+    Pause: <kbd>P</kbd>
+  </p>
+<script src="game.js"></script>
+</body>
+</html>
