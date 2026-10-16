@@ -5,12 +5,18 @@ A dependency-free browser brick breaker game (HTML5 canvas + vanilla JS).
 ## Play
 
 Open `index.html` in a browser — no build step or server required.
+It works on phones and tablets too: the playfield adapts to portrait or
+landscape, and you can add the page to your home screen to play full screen.
 
 ## Controls
 
-- **Move:** ← / → or A / D, mouse, or touch
-- **Launch / continue:** Space, Enter, or click/tap
-- **Pause:** P or Esc
+- **Move:** ← / → or A / D, or the mouse
+- **Launch / continue:** Space, Enter, or click
+- **Pause:** P, Esc, or the pause button
+
+On a touchscreen, drag anywhere on the playfield to move the paddle (your
+finger never has to cover it) and tap to launch. Use the on-screen button to
+pause; the game also pauses itself when you switch apps.
 
 ## Features
 

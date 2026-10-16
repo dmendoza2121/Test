@@ -3,24 +3,57 @@
 
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
-  const W = canvas.width;
-  const H = canvas.height;
+  const stage = document.getElementById('stage');
+  const pauseBtn = document.getElementById('pause');
+  const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+  const ACTION = TOUCH ? 'Tap' : 'Press Space or click';
 
   // ---- Config ----
-  const PADDLE_W = 110;
   const PADDLE_H = 14;
-  const PADDLE_Y = H - 40;
   const PADDLE_SPEED = 520; // px/s
   const BALL_R = 8;
   const BASE_BALL_SPEED = 360; // px/s
   const BRICK_COLS = 10;
   const BRICK_H = 22;
-  const BRICK_GAP = 6;
   const BRICK_TOP = 70;
-  const SIDE_MARGIN = 20;
-  const BRICK_W = (W - SIDE_MARGIN * 2 - BRICK_GAP * (BRICK_COLS - 1)) / BRICK_COLS;
   const START_LIVES = 3;
   const POWERUP_CHANCE = 0.12;
+  const TAP_SLOP = 10; // CSS px a touch may move and still count as a tap
+
+  // Playfield size in game units. It follows the screen's shape (tall on a
+  // portrait phone, wide on a landscape screen) and is chosen at the start
+  // of each game, so rotating mid-game only rescales the view.
+  let W, H, PADDLE_W, PADDLE_Y, BRICK_GAP, SIDE_MARGIN, BRICK_W;
+
+  function setDimensions() {
+    const aspect = stage.clientWidth / Math.max(1, stage.clientHeight);
+    if (aspect < 1) {
+      W = 480;
+      H = Math.round(Math.min(1000, Math.max(600, W / aspect)));
+    } else {
+      H = 600;
+      W = Math.round(Math.min(1100, Math.max(700, H * aspect)));
+    }
+    PADDLE_W = Math.round(Math.min(110, W * 0.22));
+    PADDLE_Y = H - 40;
+    BRICK_GAP = W < 600 ? 4 : 6;
+    SIDE_MARGIN = W < 600 ? 12 : 20;
+    BRICK_W = (W - SIDE_MARGIN * 2 - BRICK_GAP * (BRICK_COLS - 1)) / BRICK_COLS;
+    fitCanvas();
+  }
+
+  // Scale the canvas to fit the stage, rendering at the device pixel ratio.
+  function fitCanvas() {
+    const scale = Math.min(stage.clientWidth / W, stage.clientHeight / H);
+    const cssW = Math.floor(W * scale);
+    const cssH = Math.floor(H * scale);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  }
 
   const ROW_COLORS = ['#ff5d73', '#ff9f43', '#ffcc4d', '#5ee07a', '#4dc3ff', '#8f7bff', '#e86bff'];
 
@@ -122,6 +155,7 @@
   }
 
   function newGame() {
+    setDimensions();
     score = 0;
     lives = START_LIVES;
     level = 0;
@@ -147,8 +181,7 @@
       e.preventDefault();
       primaryAction();
     } else if (e.key.toLowerCase() === 'p' || e.key === 'Escape') {
-      if (state === 'play') state = 'paused';
-      else if (state === 'paused') state = 'play';
+      togglePause();
     }
     if (['arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
   });
@@ -157,6 +190,29 @@
     keys.clear();
     if (state === 'play') state = 'paused';
   });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === 'play') state = 'paused';
+  });
+
+  function togglePause() {
+    if (state === 'play') state = 'paused';
+    else if (state === 'paused') state = 'play';
+  }
+
+  pauseBtn.addEventListener('click', () => {
+    togglePause();
+    pauseBtn.blur(); // keep Space from re-triggering the button
+  });
+
+  let pauseBtnState = null;
+  function syncPauseButton() {
+    if (state === pauseBtnState) return;
+    pauseBtnState = state;
+    const paused = state === 'paused';
+    pauseBtn.disabled = !(state === 'play' || paused);
+    pauseBtn.textContent = paused ? '▶' : '❚❚';
+    pauseBtn.setAttribute('aria-label', paused ? 'Resume' : 'Pause');
+  }
 
   function primaryAction() {
     switch (state) {
@@ -183,12 +239,51 @@
     return (clientX - rect.left) * (W / rect.width);
   }
 
-  canvas.addEventListener('pointermove', (e) => {
-    if (paddle) paddle.targetX = pointerToCanvasX(e.clientX);
-  });
+  // Mouse: the paddle follows the cursor and a click acts immediately.
+  // Touch: dragging anywhere moves the paddle by the drag distance (so a
+  // finger never has to cover it), and a short tap acts on release, so you
+  // can line up the paddle before launching.
+  let touch = null; // { id, lastX, startX, startY, moved }
+
   canvas.addEventListener('pointerdown', (e) => {
-    if (paddle) paddle.targetX = pointerToCanvasX(e.clientX);
-    primaryAction();
+    if (e.pointerType === 'mouse') {
+      if (paddle) paddle.targetX = pointerToCanvasX(e.clientX);
+      primaryAction();
+      return;
+    }
+    if (touch) return; // ignore extra fingers
+    canvas.setPointerCapture(e.pointerId);
+    touch = { id: e.pointerId, lastX: e.clientX, startX: e.clientX, startY: e.clientY, moved: false };
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'mouse') {
+      if (paddle) paddle.targetX = pointerToCanvasX(e.clientX);
+      return;
+    }
+    if (!touch || e.pointerId !== touch.id) return;
+    if (Math.hypot(e.clientX - touch.startX, e.clientY - touch.startY) > TAP_SLOP) touch.moved = true;
+    if (paddle) {
+      const scale = W / canvas.getBoundingClientRect().width;
+      paddle.targetX = null;
+      paddle.x = Math.max(0, Math.min(W - paddle.w, paddle.x + (e.clientX - touch.lastX) * scale));
+    }
+    touch.lastX = e.clientX;
+  });
+
+  function endTouch(e, cancelled) {
+    if (!touch || e.pointerId !== touch.id) return;
+    const wasTap = !touch.moved && !cancelled;
+    touch = null;
+    if (wasTap) primaryAction();
+  }
+  canvas.addEventListener('pointerup', (e) => endTouch(e, false));
+  canvas.addEventListener('pointercancel', (e) => endTouch(e, true));
+
+  window.addEventListener('resize', () => {
+    // Between games the playfield can change shape; mid-game it only rescales.
+    if (state === 'menu' || state === 'gameover' || state === 'win') setDimensions();
+    else fitCanvas();
   });
 
   // ---- Update ----
@@ -239,6 +334,7 @@
 
     if (balls.length === 0) {
       lives--;
+      if (navigator.vibrate) navigator.vibrate(lives > 0 ? 80 : [80, 60, 160]);
       if (lives <= 0) {
         state = 'gameover';
         saveBest();
@@ -452,7 +548,7 @@
     ctx.textAlign = 'left';
     ctx.fillText(`Best ${best}`, 20, 52);
 
-    if (!bricks) { drawOverlay('BRICK BREAKER', 'Press Space or click to start'); return; }
+    if (!bricks) { drawOverlay('BRICK BREAKER', `${ACTION} to start`); return; }
 
     // Bricks
     for (const br of bricks) {
@@ -515,11 +611,11 @@
     }
 
     // Overlays
-    if (state === 'serve') drawHint('Press Space or click to launch');
-    if (state === 'paused') drawOverlay('PAUSED', 'Press P or Space to resume');
-    if (state === 'levelclear') drawOverlay(`LEVEL ${level + 1} CLEAR!`, 'Press Space or click to continue');
-    if (state === 'gameover') drawOverlay('GAME OVER', `Score ${score} · Press Space or click to play again`);
-    if (state === 'win') drawOverlay('YOU WIN!', `Final score ${score} · Press Space or click to play again`);
+    if (state === 'serve') drawHint(TOUCH ? 'Drag to aim · tap to launch' : 'Press Space or click to launch');
+    if (state === 'paused') drawOverlay('PAUSED', TOUCH ? 'Tap to resume' : 'Press P or Space to resume');
+    if (state === 'levelclear') drawOverlay(`LEVEL ${level + 1} CLEAR!`, `${ACTION} to continue`);
+    if (state === 'gameover') drawOverlay('GAME OVER', `${ACTION} to play again`, `Score ${score}`);
+    if (state === 'win') drawOverlay('YOU WIN!', `${ACTION} to play again`, `Final score ${score}`);
   }
 
   function drawHint(text) {
@@ -529,29 +625,36 @@
     ctx.fillText(text, W / 2, PADDLE_Y - 60);
   }
 
-  function drawOverlay(title, sub) {
+  function drawOverlay(title, sub, detail) {
     ctx.fillStyle = 'rgba(10, 10, 25, 0.72)';
     ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffcc4d';
     ctx.font = 'bold 44px system-ui, sans-serif';
-    ctx.fillText(title, W / 2, H / 2 - 20);
+    ctx.fillText(title, W / 2, H / 2 - 20, W - 32);
     ctx.fillStyle = '#e8e9f3';
     ctx.font = '18px system-ui, sans-serif';
-    ctx.fillText(sub, W / 2, H / 2 + 26);
+    if (detail) {
+      ctx.fillText(detail, W / 2, H / 2 + 26, W - 32);
+      ctx.fillText(sub, W / 2, H / 2 + 54, W - 32);
+    } else {
+      ctx.fillText(sub, W / 2, H / 2 + 26, W - 32);
+    }
   }
 
   // ---- Loop ----
+  setDimensions();
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.033, (now - last) / 1000); // clamp to avoid huge jumps
     last = now;
     update(dt);
     draw();
+    syncPauseButton();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   // Expose a tiny hook for automated testing
-  window.__brickBreaker = { get state() { return state; }, get score() { return score; }, get bricks() { return bricks; } };
+  window.__brickBreaker = { get state() { return state; }, get score() { return score; }, get bricks() { return bricks; }, get paddle() { return paddle; }, get dims() { return { W, H }; } };
 })();
