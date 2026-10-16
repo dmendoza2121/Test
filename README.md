@@ -1,10 +1,10 @@
 # Brick Breaker
 
-A dependency-free browser brick breaker game (HTML5 canvas + vanilla JS).
+A dependency-free browser brick breaker game (HTML5 canvas + vanilla JS), all in one file.
 
 ## Play
 
-Open `index.html` in a browser — no build step or server required.
+Open `index.html` in a browser — no build step, server, or other files required.
 It works on phones and tablets too: the playfield adapts to portrait or
 landscape, and you can add the page to your home screen to play full screen.
 
